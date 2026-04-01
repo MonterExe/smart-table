@@ -16,6 +16,9 @@ const { data, sellers, customers } = initData(sourceData);
 // Переменные для модулей
 let sampleTable;
 let applyPagination;
+let applySorting;
+let applyFiltering;
+let applySearching;
 
 /**
  * Сбор и обработка полей из таблицы
@@ -40,20 +43,23 @@ function collectState() {
 function render(action) {
     let state = collectState();
     let result = [...data];
-    // @todo: использование модулей (поиск, фильтрация, сортировка, пагинация)
+    // Применяем модули в правильном порядке: поиск -> фильтрация -> сортировка -> пагинация
+    if (applySearching) result = applySearching(result, state, action);
+    if (applyFiltering) result = applyFiltering(result, state, action);
+    if (applySorting) result = applySorting(result, state, action);
     if (applyPagination) result = applyPagination(result, state, action);
     sampleTable.render(result);
 }
 
-// Инициализация таблицы с выводом пагинации
+// Инициализация таблицы с выводом всех необходимых шаблонов
 sampleTable = initTable({
     tableTemplate: 'table',
     rowTemplate: 'row',
-    before: ['search'],
+    before: ['search', 'header', 'filter'],
     after: ['pagination']
 }, render);
 
-// @todo: инициализация модуля пагинации
+// Инициализация модуля пагинации
 applyPagination = initPagination(
     sampleTable.pagination.elements,
     (el, page, isCurrent) => {
@@ -65,6 +71,20 @@ applyPagination = initPagination(
         return el;
     }
 );
+
+// Инициализация модуля сортировки (кнопки из шаблона header)
+applySorting = initSorting([
+    sampleTable.header.elements.sortByDate,
+    sampleTable.header.elements.sortByTotal
+]);
+
+// Инициализация модуля фильтрации (элементы фильтров и индексы продавцов)
+applyFiltering = initFiltering(sampleTable.filter.elements, {
+    searchBySeller: sellers
+});
+
+// Инициализация модуля поиска (имя поля – 'search')
+applySearching = initSearching('search');
 
 const appRoot = document.querySelector('#app');
 appRoot.appendChild(sampleTable.container);
