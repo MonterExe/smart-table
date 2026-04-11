@@ -10,20 +10,16 @@ import { initFiltering } from "./components/filtering.js";
 import { initSorting } from "./components/sorting.js";
 import { initPagination } from "./components/pagination.js";
 
-// Исходные данные используемые в render()
-const { data, sellers, customers } = initData(sourceData);
+const API = initData(sourceData);
 
-// Переменные для модулей
 let sampleTable;
 let applyPagination;
+let updatePagination;
 let applySorting;
 let applyFiltering;
+let updateIndexes;
 let applySearching;
 
-/**
- * Сбор и обработка полей из таблицы
- * @returns {Object}
- */
 function collectState() {
     if (!sampleTable || !sampleTable.container) return {};
     const state = processFormData(new FormData(sampleTable.container));
@@ -36,22 +32,20 @@ function collectState() {
     };
 }
 
-/**
- * Перерисовка состояния таблицы при любых изменениях
- * @param {HTMLButtonElement?} action
- */
-function render(action) {
+async function render(action) {
     let state = collectState();
-    let result = [...data];
-    // Применяем модули в правильном порядке: поиск -> фильтрация -> сортировка -> пагинация
-    if (applySearching) result = applySearching(result, state, action);
-    if (applyFiltering) result = applyFiltering(result, state, action);
-    if (applySorting) result = applySorting(result, state, action);
-    if (applyPagination) result = applyPagination(result, state, action);
-    sampleTable.render(result);
+    let query = {};
+
+    query = applySearching(query, state, action);
+    query = applyFiltering(query, state, action);
+    query = applySorting(query, state, action);
+    query = applyPagination(query, state, action);
+
+    const { total, items } = await API.getRecords(query);
+    updatePagination(total, query);
+    sampleTable.render(items);
 }
 
-// Инициализация таблицы с выводом всех необходимых шаблонов
 sampleTable = initTable({
     tableTemplate: 'table',
     rowTemplate: 'row',
@@ -59,8 +53,7 @@ sampleTable = initTable({
     after: ['pagination']
 }, render);
 
-// Инициализация модуля пагинации
-applyPagination = initPagination(
+const pagination = initPagination(
     sampleTable.pagination.elements,
     (el, page, isCurrent) => {
         const input = el.querySelector('input');
@@ -71,21 +64,29 @@ applyPagination = initPagination(
         return el;
     }
 );
+applyPagination = pagination.applyPagination;
+updatePagination = pagination.updatePagination;
 
-// Инициализация модуля сортировки (кнопки из шаблона header)
 applySorting = initSorting([
     sampleTable.header.elements.sortByDate,
     sampleTable.header.elements.sortByTotal
 ]);
 
-// Инициализация модуля фильтрации (элементы фильтров и индексы продавцов)
-applyFiltering = initFiltering(sampleTable.filter.elements, {
-    searchBySeller: sellers
-});
+const filtering = initFiltering(sampleTable.filter.elements);
+applyFiltering = filtering.applyFiltering;
+updateIndexes = filtering.updateIndexes;
 
-// Инициализация модуля поиска (имя поля – 'search')
 applySearching = initSearching('search');
 
 const appRoot = document.querySelector('#app');
 appRoot.appendChild(sampleTable.container);
-render();
+
+async function init() {
+    const indexes = await API.getIndexes();
+    updateIndexes(sampleTable.filter.elements, {
+        searchBySeller: indexes.sellers
+    });
+    render();
+}
+
+init();

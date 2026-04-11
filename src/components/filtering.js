@@ -1,32 +1,21 @@
-import { createComparison, rules } from "../lib/compare.js";
-
-export function initFiltering(elements, indexes) {
-    // Заполняем select продавцов
-    Object.keys(indexes).forEach(elementName => {
-        const select = elements[elementName];
-        if (!select) return;
-        const options = Object.values(indexes[elementName]).map(name => {
-            const option = document.createElement('option');
-            option.value = name;
-            option.textContent = name;
-            return option;
+export function initFiltering(elements) {
+    const updateIndexes = (elements, indexes) => {
+        Object.keys(indexes).forEach((elementName) => {
+            const select = elements[elementName];
+            if (!select) return;
+            select.innerHTML = ''; // clear existing options
+            const options = Object.values(indexes[elementName]).map(name => {
+                const el = document.createElement('option');
+                el.textContent = name;
+                el.value = name;
+                return el;
+            });
+            select.append(...options);
         });
-        select.append(...options);
-    });
+    };
 
-    // Настраиваем компаратор: пропускаем несуществующие и пустые поля,
-    // а для диапазона total, подстрок и точного совпадения используем правила
-    const compare = createComparison(
-        ['skipNonExistentSourceFields', 'skipEmptyTargetValues'],
-        [
-            rules.arrayAsRange(),               // обрабатывает массив [from, to] для total
-            rules.caseInsensitiveStringIncludes(), // для date и customer
-            rules.exactEquality()               // для seller (точное совпадение)
-        ]
-    );
-
-    return (data, state, action) => {
-        // Очистка поля (если нажата кнопка clear)
+    const applyFiltering = (query, state, action) => {
+        // Clear filter action
         if (action && action.name === 'clear') {
             const field = action.dataset.field;
             if (field) {
@@ -40,30 +29,27 @@ export function initFiltering(elements, indexes) {
                     if (select) select.value = '';
                 }
             }
-            return data;
+            // Return same query – the UI will be re‑read in next collectState()
+            return query;
         }
 
-        // Формируем объект фильтрации из state, удаляя служебные поля
-        const filterState = { ...state };
-        delete filterState.page;
-        delete filterState.rowsPerPage;
-        delete filterState.search;
-        delete filterState.sort;
+        // Build filter object from current input values
+        const filter = {};
+        Object.keys(elements).forEach(key => {
+            const el = elements[key];
+            if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT') && el.value) {
+                filter[`filter[${el.name}]`] = el.value;
+            }
+        });
 
-        // Преобразуем totalFrom и totalTo в массив total
-        const from = filterState.totalFrom !== '' ? parseFloat(filterState.totalFrom) : '';
-        const to = filterState.totalTo !== '' ? parseFloat(filterState.totalTo) : '';
-        if (from !== '' || to !== '') {
-            filterState.total = [from, to];
-        }
-        delete filterState.totalFrom;
-        delete filterState.totalTo;
+        // Special handling for total range inputs (they are not in `elements` but in the DOM)
+        const totalFrom = document.querySelector('[data-name="totalFrom"]');
+        const totalTo = document.querySelector('[data-name="totalTo"]');
+        if (totalFrom && totalFrom.value) filter['filter[totalFrom]'] = totalFrom.value;
+        if (totalTo && totalTo.value) filter['filter[totalTo]'] = totalTo.value;
 
-        // Проверяем, есть ли активные фильтры
-        const hasFilters = Object.values(filterState).some(v => v && v !== '');
-        if (!hasFilters) return data;
-
-        // Фильтруем данные
-        return data.filter(row => compare(row, filterState));
+        return Object.keys(filter).length ? Object.assign({}, query, filter) : query;
     };
+
+    return { updateIndexes, applyFiltering };
 }
